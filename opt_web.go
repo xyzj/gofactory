@@ -21,8 +21,8 @@ var defaultWebServer = webSvr{
 	writeTimeout: time.Second * 120,
 	idleTimeout:  time.Second * 60,
 	hosts:        make([]string, 0),
-	http:         ":6880",
-	protocols:    map[string]string{"http": "http://127.0.0.1:6880"},
+	bind:         ":6880",
+	protocol:     ProtocolHTTP,
 	tlsc:         nil,
 }
 
@@ -30,41 +30,27 @@ var defaultWebServer = webSvr{
 type webSvr struct {
 	engineFunc   func() *gin.Engine
 	hosts        []string
-	protocols    map[string]string
 	tlsc         *tls.Config
 	readTimeout  time.Duration
 	writeTimeout time.Duration
 	idleTimeout  time.Duration
-	http         string
-	https        string
+	bind         string
+	protocol     ProtocolType
 	enable       bool
 }
 
-func (opt *webSvr) build(l logger.Logger) (map[string]*http.Server, error) {
-	if opt.http+opt.https == "" {
+func (opt *webSvr) build(l logger.Logger) (*http.Server, error) {
+	if opt.bind == "" {
 		return nil, errors.New("[web] services not enable")
 	}
-	m := make(map[string]*http.Server)
-	if opt.https != "" {
-		s := &http.Server{
-			Addr:         opt.https,
-			ReadTimeout:  opt.readTimeout,
-			WriteTimeout: opt.writeTimeout,
-			IdleTimeout:  opt.idleTimeout,
-			TLSConfig:    opt.tlsc,
-		}
-		m["https"] = s
+	s := &http.Server{
+		Addr:         opt.bind,
+		ReadTimeout:  opt.readTimeout,
+		WriteTimeout: opt.writeTimeout,
+		IdleTimeout:  opt.idleTimeout,
+		TLSConfig:    opt.tlsc,
 	}
-	if opt.http != "" {
-		s := &http.Server{
-			Addr:         opt.http,
-			ReadTimeout:  opt.readTimeout,
-			WriteTimeout: opt.writeTimeout,
-			IdleTimeout:  opt.idleTimeout,
-		}
-		m["http"] = s
-	}
-	return m, nil
+	return s, nil
 }
 
 func (opt *webSvr) buildRoutes() (*gin.Engine, error) {
@@ -102,41 +88,20 @@ func OptWebTimeout(read, write, idle time.Duration) webOpts {
 	}
 }
 
-func OptHTTP(s string) webOpts {
+func OptWebBind(s, cert, key string) webOpts {
 	return func(opt *webSvr) {
-		if _, ok := checkTCPAddr(s); !ok {
-			opt.http = ""
-			delete(opt.protocols, "http")
+		_, ok := checkTCPAddr(s)
+		if !ok {
+			opt.bind = ""
 			return
 		}
-		opt.http = s
-		opt.protocols["http"] = "http://" + s
-	}
-}
-
-func OptHTTPS(s string, t *tls.Config) webOpts {
-	return func(opt *webSvr) {
-		if _, ok := checkTCPAddr(s); !ok {
-			opt.https = ""
+		if t, err := crypto.TLSConfigFromFile(cert, key, ""); err == nil {
+			opt.bind = s
+			opt.tlsc = t
+			opt.protocol = ProtocolHTTPS
 			return
 		}
-		if t == nil || t.Certificates == nil {
-			opt.https = ""
-			return
-		}
-		opt.https = s
-		opt.protocols["https"] = "https://" + s
-		opt.tlsc = t
-	}
-}
-
-func OptHTTPSFromFile(s, certFile, keyFile string) webOpts {
-	return func(opt *webSvr) {
-		t, err := crypto.TLSConfigFromFile(certFile, keyFile, "")
-		if err != nil {
-			opt.tlsc = nil
-			return
-		}
-		OptHTTPS(s, t)
+		opt.bind = s
+		opt.protocol = ProtocolHTTP
 	}
 }

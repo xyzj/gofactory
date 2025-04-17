@@ -17,16 +17,22 @@ const (
 	Release
 )
 
+type emptySvr struct {
+	enable bool
+}
+
 type Opt struct {
 	// services
-	tcpServer  tcpSvr
-	mqttBroker mqttBroker
-	webServer  webSvr
+	tcpServer   tcpSvr
+	mqttBroker  mqttBroker
+	webServer   webSvr
+	emptyServer emptySvr
 	// clients
 	discover discover
 	cliredis cliRedis
 	climqtt  cliMqtt
 	clirmq   cliRmq
+	clidb    cliDB
 	boltname string
 	// base config
 	logg logger.Logger
@@ -87,6 +93,14 @@ func WithWebServer(opts ...webOpts) Opts {
 		o.webServer.enable = true
 		for _, v := range opts {
 			v(&o.webServer)
+		}
+	}
+}
+
+func WithEmptyServer() Opts {
+	return func(o *Opt) {
+		o.emptyServer = emptySvr{
+			enable: true,
 		}
 	}
 }
@@ -182,5 +196,20 @@ func WithRMQConsumer(opts ...rmqOpts) Opts {
 func WithBoltDB(name string) Opts {
 	return func(o *Opt) {
 		o.boltname = name
+	}
+}
+
+func WithDBClient(opts ...dbOpts) Opts {
+	return func(o *Opt) {
+		o.clidb = cliDB{
+			addr:     "127.0.0.1:3306",
+			user:     "root",
+			pwd:      "root",
+			database: []string{"test"},
+			enable:   true,
+		}
+		for _, v := range opts {
+			v(&o.clidb)
+		}
 	}
 }

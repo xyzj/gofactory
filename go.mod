@@ -13,6 +13,7 @@ require (
 	github.com/tidwall/sjson v1.2.5
 	github.com/xyzj/mqtt-server v0.0.0-00010101000000-000000000000
 	github.com/xyzj/toolbox v0.0.0-00010101000000-000000000000
+	gorm.io/gorm v1.25.12
 )
 
 require (
@@ -73,5 +74,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/mysql v1.5.7 // indirect
 	gorm.io/driver/sqlserver v1.5.3 // indirect
-	gorm.io/gorm v1.25.12 // indirect
 )

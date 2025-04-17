@@ -19,9 +19,10 @@ type Service struct {
 	opt        *Opt
 	httpcli    *httpclient.Client
 	boltcli    *db.BoltDB
+	dbcli      *db.Conn
 	tcpserver  *tcpfactory.TCPManager
 	mqttbroker *server.MqttServer
-	webserver  map[string]*http.Server
+	webserver  *http.Server
 }
 
 func New(opts ...Opts) (*Service, error) {
@@ -49,6 +50,7 @@ func New(opts ...Opts) (*Service, error) {
 		s.tcpserver, err = opt.tcpServer.build(opt.logg)
 		if err != nil {
 			opt.logg.Error("build tcp server error:" + err.Error())
+			opt.tcpServer.enable = false
 		}
 	}
 	// mqtt broker
@@ -56,6 +58,7 @@ func New(opts ...Opts) (*Service, error) {
 		s.mqttbroker, err = opt.mqttBroker.build(opt.logg, opt.mode)
 		if err != nil {
 			opt.logg.Error("build mqtt server error:" + err.Error())
+			opt.mqttBroker.enable = false
 		}
 	}
 	// web
@@ -63,6 +66,7 @@ func New(opts ...Opts) (*Service, error) {
 		s.webserver, err = opt.webServer.build(opt.logg)
 		if err != nil {
 			opt.logg.Error("build web server error:" + err.Error())
+			opt.webServer.enable = false
 		}
 	}
 	// clients
@@ -90,7 +94,10 @@ func (s *Service) Start() {
 
 func (s *Service) Run() {
 	wg := sync.WaitGroup{}
-	if s.tcpserver != nil {
+	if s.opt.emptyServer.enable {
+		wg.Add(1)
+	}
+	if s.opt.tcpServer.enable {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -101,46 +108,73 @@ func (s *Service) Run() {
 			}
 		}()
 	}
-	if s.mqttbroker != nil {
+	if s.opt.mqttBroker.enable {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			s.mqttbroker.Run()
+			err := s.mqttbroker.Start()
+			if err != nil {
+				s.opt.logg.Error("[mqtt-broker] start error:" + err.Error())
+				return
+			}
 		}()
 	}
-	if s.webserver != nil {
+	if s.opt.webServer.enable {
 		h, err := s.opt.webServer.buildRoutes()
 		if err != nil {
 			s.opt.logg.Error("[web] build routes error:" + err.Error())
 			return
 		}
-		wg.Add(2)
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if ss, ok := s.webserver["https"]; ok {
-				ss.Handler = h
-				s.opt.logg.System("[web] https listening to " + ss.Addr)
-				err = ss.ListenAndServeTLS("", "")
-				if err != nil {
-					s.opt.logg.Error("[web] serve tls web service failed:" + err.Error())
-				}
+			var err error
+			s.webserver.Handler = h
+			switch s.opt.webServer.protocol {
+			case ProtocolHTTP:
+				s.opt.logg.System("[web] http listening to " + s.webserver.Addr)
+				err = s.webserver.ListenAndServe()
+			case ProtocolHTTPS:
+				s.opt.logg.System("[web] https listening to " + s.webserver.Addr)
+				err = s.webserver.ListenAndServeTLS("", "")
+			default:
+				s.opt.logg.System("[web] no web service listening")
+				return
 			}
-		}()
-		go func() {
-			defer wg.Done()
-			if ss, ok := s.webserver["http"]; ok {
-				ss.Handler = h
-				s.opt.logg.System("[web] http listening to " + ss.Addr)
-				err = ss.ListenAndServe()
-				if err != nil {
-					s.opt.logg.Error("[web] serve web service failed:" + err.Error())
-				}
+			if err != nil {
+				s.opt.logg.Error("[web] serve web service failed:" + err.Error())
 			}
 		}()
 	}
 	// clients
 	// discover
 	if s.opt.discover.enable {
+		for p, v := range s.opt.discover.svrInfo.RegisterAddress {
+			switch p {
+			case ProtocolTCP:
+				if !s.opt.tcpServer.enable {
+					delete(s.opt.discover.svrInfo.RegisterAddress, ProtocolTCP)
+				}
+			case ProtocolHTTP:
+				if !s.opt.webServer.enable || s.opt.webServer.protocol != ProtocolHTTP {
+					delete(s.opt.discover.svrInfo.RegisterAddress, ProtocolHTTP)
+				}
+			case ProtocolHTTPS:
+				if !s.opt.webServer.enable || s.opt.webServer.protocol != ProtocolHTTPS {
+					delete(s.opt.discover.svrInfo.RegisterAddress, ProtocolHTTPS)
+				}
+			case ProtocolMQTT:
+			default:
+				s.opt.logg.System("[discover] " + v)
+			}
+			if strings.HasPrefix(v, "http://") {
+				s.opt.logg.System("[discover] http://" + v)
+			} else if strings.HasPrefix(v, "https://") {
+				s.opt.logg.System("[discover] https://" + v)
+			} else {
+				s.opt.logg.System("[discover] " + v)
+			}
+		}
 		if len(s.opt.discover.svrInfo.RegisterAddress) == 0 {
 		}
 		err := s.opt.discover.build(s.opt.logg)
@@ -167,6 +201,13 @@ func (s *Service) Run() {
 		err := s.opt.clirmq.build(s.opt.logg)
 		if err != nil {
 			s.opt.logg.Error("build rmq clients error:" + err.Error())
+		}
+	}
+	// db
+	if s.opt.clidb.enable {
+		err := s.opt.clidb.build(s.opt.logg)
+		if err != nil {
+			s.opt.logg.Error("build db client error:" + err.Error())
 		}
 	}
 	wg.Wait()

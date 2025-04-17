@@ -3,7 +3,6 @@ package gofactory
 import (
 	"crypto/tls"
 	"errors"
-	"log/slog"
 	"time"
 
 	"github.com/xyzj/mqtt-server/cmd/server"
@@ -28,13 +27,7 @@ type mqttBroker struct {
 
 func (opt *mqttBroker) build(l logger.Logger, mode RunMode) (*server.MqttServer, error) {
 	if !opt.enable {
-		return nil, errors.New("[mqtt] broker not enable")
-	}
-	ll := slog.LevelInfo
-	as := true
-	if mode == Release {
-		ll = slog.LevelWarn
-		as = false
+		return nil, errors.New("[mqtt-broker] not enable")
 	}
 	mopt := &server.Opt{
 		ClientsBufferSize:       opt.clientsBufferSize,
@@ -43,27 +36,21 @@ func (opt *mqttBroker) build(l logger.Logger, mode RunMode) (*server.MqttServer,
 		InsideJob:               opt.insidejob,
 		AuthConfig:              opt.auth,
 		DisableAuth:             opt.auth == nil,
-		FileLogger: slog.New(slog.NewTextHandler(
-			l.DefaultWriter(),
-			&slog.HandlerOptions{
-				AddSource: as,
-				Level:     ll,
-				ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-					if a.Key == "time" {
-						return slog.Attr{}
-					}
-					return a
-				},
-			},
-		)),
+		FileLogger:              l,
+		TLSConfig:               opt.tlsc,
+		MqttTlsAddr:             opt.mqtttls,
+		MqttAddr:                opt.mqtt,
+		WebAddr:                 opt.mqttweb,
+		WSAddr:                  opt.mqttws,
 	}
 	if opt.tlsc == nil || opt.tlsc.Certificates == nil {
-		opt.mqtttls = ""
+		mopt.MqttTlsAddr = ""
+		mopt.TLSConfig = nil
 	}
 	_, ok1 := checkTCPAddr(opt.mqtt)
 	_, ok2 := checkTCPAddr(opt.mqtttls)
 	if !ok1 && !ok2 {
-		return nil, errors.New("[mqtt] broker error: no valid ports")
+		return nil, errors.New("[mqtt-broker] error: no valid ports")
 	}
 	return server.NewServer(mopt), nil
 }

@@ -1,9 +1,8 @@
 package main
 
 import (
-	"time"
-
 	"github.com/xyzj/gofactory"
+	"github.com/xyzj/toolbox/db"
 	"github.com/xyzj/toolbox/gocmd"
 	"github.com/xyzj/toolbox/logger"
 )
@@ -16,6 +15,10 @@ func main() {
 	s, err := gofactory.New(
 		gofactory.WithLogger(logger.NewConsoleLogger()),
 		gofactory.SetMode(gofactory.Release),
+		gofactory.WithMQTTBroker(
+			gofactory.OptMqttAddr(":6828"),
+			gofactory.OptMqttWebAddr(":6829"),
+		),
 		gofactory.WithTCPServer(
 			gofactory.OptTCPBindAddr(":6823"),
 		),
@@ -24,7 +27,7 @@ func main() {
 			gofactory.OptRedisAuth("", "arbalest"),
 		),
 		gofactory.WithWebServer(
-			gofactory.OptHTTP(":6824")),
+			gofactory.OptWebBind(":6824", "", "")),
 		gofactory.WithDiscover(gofactory.OptDiscoverByRedis(
 			gofactory.OptRedisAddr("192.168.50.83:6379"),
 			gofactory.OptRedisAuth("", "arbalest")),
@@ -33,12 +36,10 @@ func main() {
 		gofactory.WithBoltDB("test.db"),
 		gofactory.WithMqttClient(gofactory.OptMqttAuth("arx7", "arbalest"),
 			gofactory.OptMqttHost("tls://192.168.50.83:1881", nil)),
+		gofactory.WithDBClient(gofactory.OptDBHost(db.DriveMySQL, "192.168.50.83:13306", "root", "lp1234xy")),
 	)
 	if err != nil {
 		panic(err)
 	}
-	go func() {
-		time.Sleep(time.Second * 5)
-	}()
 	s.Run()
 }
