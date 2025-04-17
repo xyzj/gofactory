@@ -32,17 +32,12 @@ func (opt *cliDB) build(l logger.Logger) error {
 
 type dbOpts func(o *cliDB)
 
-func OptDBHost(driver db.Drive, host, username, password string) dbOpts {
+func OptDBHost(driver db.Drive, host, username, password string, databases ...string) dbOpts {
 	return func(o *cliDB) {
 		o.addr = host
 		o.user = username
 		o.pwd = password
 		o.driver = driver
-	}
-}
-
-func OptDBDatabases(databases ...string) dbOpts {
-	return func(o *cliDB) {
 		o.database = databases
 	}
 }
